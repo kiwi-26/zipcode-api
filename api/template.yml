@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  zipcode-api
+
+Transform:
+- AWS::Serverless-2016-10-31
+
+Parameters: 
+  ZipCodeTableName: 
+    Type: String
+
+Globals:
+  Api:
+    OpenApiVersion: 3.0.2
+
+Resources:
+  ZipCodeApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Description: 'Role for zipcode api functions'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonDynamoDBReadOnlyAccess
+
+  FindFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers/index.find
+      Runtime: nodejs12.x
+      MemorySize: 128
+      Timeout: 3
+      Description: "Find zipcode."
+      Role: !GetAtt ZipCodeApiFunctionRole.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ZipCodeTableName
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /find
+            Method: GET
+            RestApiId: !Ref ZipCodeApi
+
+  ZipCodeApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: v1
+      DefinitionBody:
+        swagger: 2.0
+        info:
+          title: zip-code-api
+          description: 'Zip code api'
+          version: 1.0.0
+        schemes:
+          - https
+        paths:
+          /find:
+            get:
+              produces:
+                - application/json
+              security:
+                - ZipCodeApiKey: []
+              responses:
+                "200":
+                  description: 200 response
+                  schema:
+                    $ref: "#/definitions/ZipCode"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: 200
+                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FindFunction.Arn}/invocations
+                passthroughBehavior: when_no_templates
+                httpMethod: POST
+                type: aws_proxy
+            options:
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              responses:
+                "200":
+                  description: 200 response
+                  headers:
+                    Access-Control-Allow-Headers:
+                      type: "string"
+                    Access-Control-Allow-Methods:
+                      type: "string"
+                    Access-Control-Allow-Origin:
+                      type: "string"
+              x-amazon-apigateway-integration:
+                requestTemplates:
+                  application/json: |
+                    {
+                      "statusCode" : 200
+                    }
+                responses:
+                  default:
+                    statusCode: 200
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type, X-Api-Key'"
+                      method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                    responseTemplates:
+                      application/json: |
+                        {}
+                passthroughBehavior: when_no_templates
+                type: mock
+        definitions:
+          ZipCode:
+            type: object
+            title: ZipCode Object
+        securityDefinitions:
+          ZipCodeApiKey:
+            type: apiKey
+            name: x-api-key
+            in: header
+
+  ZipCodeApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - ZipCodeApi
+      - ZipCodeApiv1Stage
+    Properties:
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref ZipCodeApi
+          StageName: v1
+
+  ZipCodeApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn: ZipCodeApi
+    Properties:
+      ApiStages:
+      - ApiId: !Ref ZipCodeApi
+        Stage: !Ref ZipCodeApiv1Stage
+      Throttle:
+        BurstLimit: 200
+        RateLimit: 100
+
+  ZipCodeApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    DependsOn:
+      - ZipCodeApiKey
+      - ZipCodeApiUsagePlan
+    Properties:
+      KeyId: !Ref ZipCodeApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ZipCodeApiUsagePlan

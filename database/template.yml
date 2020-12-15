@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  database-for-zipcode
+
+Resources:
+  ZipCodeTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "prefix"
+          AttributeType: "S"
+        - AttributeName: "zipcode"
+          AttributeType: "S"
+        - AttributeName: "town"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "zipcode"
+          KeyType: "HASH"
+        - AttributeName: "town"
+          KeyType: "RANGE"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      GlobalSecondaryIndexes:
+        - IndexName: "prefix-index"
+          KeySchema:
+            - AttributeName: "prefix"
+              KeyType: "HASH"
+            - AttributeName: "zipcode"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: "ALL"
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
